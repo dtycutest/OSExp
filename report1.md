@@ -1,0 +1,209 @@
+# 综合实验报告
+
+## 系统设计部分
+
+### 架构设计说明
+本实验目标是实现一个基于 RISC-V 的最小操作系统引导程序，能够在 QEMU 模拟环境下输出字符串。系统架构主要由以下部分组成：
+- **入口汇编代码（entry.S）**：完成栈初始化、BSS 段清零，并跳转到 C 语言主函数。
+- **链接脚本（kernel.ld）**：定义程序入口 `_entry`，控制代码段、数据段、BSS 段在内存中的布局。
+- **UART 串口驱动（uart.c）**：实现最小化的字符与字符串输出。
+- **自旋锁（spinlock.c）**：实现自旋锁
+- **输出函数（print.c）**：实现互斥的终端输出
+- **C 启动函数（start.c）**：从M模式转到S模式，并启动主函数
+- **C 主函数（main.c）**：调用 UART 打印测试信息。
+
+### 关键数据结构
+- **栈空间**：通过 `stack0` 数组分配，供 CPU 启动后使用，大小设为 4KB。
+- **UART 寄存器结构**：
+  - `THR` (Transmit Holding Register)：写入数据即可发送。
+  - `LSR` (Line Status Register)：用于检测发送缓冲区是否空闲。
+
+### 与 xv6 对比分析
+- 仅有2个cpu核
+- 仅包含启动核输出字符串信息的功能
+- 在entry.S中进行了bss段的清零
+
+### 设计决策理由
+- **仅保留最小功能**：减少复杂度，仅保留启动必需的过程。
+- **UART 最小化实现**：直接操作寄存器，只支持字符串输出即可满足实验目标。
+- **BSS 段清零**：保证全局变量初始值确定为0。
+
+---
+
+## 实验过程部分
+
+### 实现步骤记录
+1. **阅读 xv6 启动代码**
+   - 分析 `kernel/entry.S`，理解设置栈和清零 BSS 的作用。
+   - 学习 `kernel/kernel.ld` 链接脚本的内存布局。
+   - 阅读 `uart.c`，掌握串口输出实现。
+2. **设计最小启动流程**
+   - 设置入口 `_entry`。
+   - 清零 BSS 段。
+   - 给每一个cpu分配一块 4KB 栈空间。
+   - 调用 C 函数 `start`。
+   - 设置mstatus寄存器，设置返回地址，进行必要的状态设置，使用mret从M模式转到S模式，调用`main`
+   - 在 `main` 中调用 `printf` 输出信息。
+3. **编写汇编启动代码**
+   - 在 `entry.S` 中设置 `sp`，调用 `start`。
+   - 使用 `la` 指令定位连接脚本提供的全局符号。
+4. **配置链接脚本**
+   - 在 `kernel.ld` 中定义入口 `_entry` 和内存段顺序。
+5. **实现 UART 输出**
+   - 在 `uart.c` 中编写 `uart_putc`。
+6. **实现print输出**
+   - 在 `print.c` 中使用`spinlock`和`uart_putc`实现终端输出函数
+7. **编写主函数**
+   - 在 `main.c` 中调用 `printf` 输出。
+
+### 问题与解决方案
+- **问题1**：课上发的代码结构的命名与xv6存在差异。  
+  **解决**：统一以xv6的命名方式为准。
+- **问题2**：修改了c源码没有产生效果。  
+  **解决**：有的时候要先进行`make clean`然后才能正常编译运行
+- **问题3**：GDB 调试失败。  
+  **解决**：26000端口被占用，先杀掉占用端口的进程。
+
+### 源码理解总结
+- **entry.S** 是系统的真正入口，必须先设置运行环境。
+- **kernel.ld** 决定程序的内存布局，确保 `_entry` 在 QEMU 的加载地址。
+- **uart.c** 提供了裸机最小 I/O 功能。
+- **start.c** 转入main
+- **main.c** 验证启动过程是否正确。
+
+---
+
+## 测试验证部分
+
+### 功能测试结果
+在 QEMU 控制台输出：
+`cpu 0 is booting!`
+`cpu 1 is booting!`
+
+说明启动流程和 UART 输出功能正常。
+
+### 性能数据
+
+
+### 异常测试
+
+### 运行截图/录屏
+
+
+---
+
+## 额外任务
+### 实现完整的printf功能
+   - 模仿xv6的结构，添加console.c的输出部分
+   - 在print.c中补充printint和printstr等函数
+   - 最终借助stdarg.h库完成printf的完整功能，实现占位符和参数的正确识别和输出
+
+### 并行加法计算
+   - 在每个cpu执行加法循环的前上锁，结束后解锁，就可以使得两个cpu的加法过程完全互斥
+   - 代码如下：
+```
+#include "riscv.h"
+#include "lib/print.h"
+#include "proc/proc.h"
+#include "lib/lock.h"
+#include "dev/uart.h"
+
+volatile static int started = 0;
+
+volatile static int sum = 0;
+
+spinlock_t addl;
+
+int main()
+{
+    int cpuid = r_tp();
+    if(cpuid == 0) {
+        uart_init();
+        print_init();
+        printf("cpu %d is booting!\n", cpuid);        
+        __sync_synchronize();
+        started = 1;
+        initlock(&addl,"add");
+        acquire(&addl);
+        for(int i = 0; i < 1000000; i++)
+            sum++;
+        printf("cpu %d report: sum = %d\n", cpuid, sum);
+        release(&addl);
+    } else {
+        while(started == 0);
+        __sync_synchronize();
+        printf("cpu %d is booting!\n", cpuid);
+        acquire(&addl);
+        for(int i = 0; i < 1000000; i++)
+            sum++;
+        printf("cpu %d report: sum = %d\n", cpuid, sum);
+        release(&addl);
+    }   
+    while (1); 
+}
+```
+   - 输出结果：
+```
+cpu 0 is booting!
+cpu 1 is booting!
+cpu 0 report: sum = 1000000
+cpu 1 report: sum = 2000000
+```
+
+### 并行输出
+   - 去掉锁，在循环内每一次加法后进行输出：
+   ```
+   #include "riscv.h"
+#include "lib/print.h"
+#include "proc/proc.h"
+#include "lib/lock.h"
+#include "dev/uart.h"
+
+volatile static int started = 0;
+
+volatile static int sum = 0;
+
+spinlock_t addl;
+
+int main()
+{
+    int cpuid = r_tp();
+    if(cpuid == 0) {
+        uart_init();
+        print_init();
+        printf("cpu %d is booting!\n", cpuid);        
+        __sync_synchronize();
+        started = 1;
+        for(int i = 0; i < 5; i++)
+        {
+            sum++;
+            printf("cpu %d report: sum = %d\n", cpuid, sum);
+        }
+    } else {
+        while(started == 0);
+        __sync_synchronize();
+        printf("cpu %d is booting!\n", cpuid);
+        for(int i = 0; i < 5; i++)
+        {
+            sum++;
+            printf("cpu %d report: sum = %d\n", cpuid, sum);
+        }
+    }   
+    while (1); 
+}
+   ```
+   - 测试结果，可以看到，两个cpu产生了交替的输出：
+   ```
+   cpu 0 is booting!
+cpu 0 report: sum = 1
+cpu 1 is booting!
+cpu 0 report: sum = 2
+cpu 0 report: sum = 3
+cpu 1 report: sum = 4
+cpu 0 report: sum = 5
+cpu 1 report: sum = 6
+cpu 0 report: sum = 7
+cpu 1 report: sum = 8
+cpu 1 report: sum = 9
+cpu 1 report: sum = 10
+   ```
