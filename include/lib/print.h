@@ -3,9 +3,9 @@
 
 #include "common.h"
 
-void print_init(void);
-void printf(char* fmt, ...);
-void panic(char* warning);
-void assert(bool condition, const char* warning);
+// void print_init(void);
+// void printf(char* fmt, ...);
+// void panic(char* warning);
+// void assert(bool condition, const char* warning);
 
 #endif

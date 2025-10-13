@@ -12,6 +12,8 @@
         "riscv.h": "c",
         "proc.h": "c",
         "types.h": "c",
-        "defs.h": "c"
+        "defs.h": "c",
+        "param.h": "c",
+        "memlayout.h": "c"
     }
 }

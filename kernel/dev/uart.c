@@ -1,7 +1,7 @@
 // low-level driver routines for 16550a UART.
 
 #include "memlayout.h"
-#include "lib/lock.h"
+#include "defs.h"
 
 // the UART control registers.
 // some have different meanings for
@@ -25,7 +25,7 @@
 #define LSR_TX_IDLE (1<<5)    // THR can accept another character to send
 
 // 读写寄存器的宏定义
-#define Reg(reg)         ((volatile unsigned char *)(UART_BASE + reg))
+#define Reg(reg)         ((volatile unsigned char *)(UART0 + reg))
 #define ReadReg(reg)     (*(Reg(reg)))
 #define WriteReg(reg, v) (*(Reg(reg)) = (v))
 

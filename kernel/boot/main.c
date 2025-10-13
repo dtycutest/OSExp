@@ -1,39 +1,109 @@
+#include "common.h"
+#include "param.h"
+#include "memlayout.h"
 #include "riscv.h"
-#include "lib/print.h"
-#include "proc/proc.h"
-#include "lib/lock.h"
-#include "dev/uart.h"
+#include "defs.h"
+#include "mem/vmem.h"
 
 volatile static int started = 0;
 
-volatile static int sum = 0;
+// volatile static int over_1 = 0, over_2 = 0;
 
-spinlock_t addl;
+// static int* mem[1024];
+
+// int main()
+// {
+//     int cpuid = r_tp();
+
+//     if(cpuid == 0) {
+
+//         print_init();
+//         kinit();
+
+//         printf("cpu %d is booting!\n", cpuid);
+//         __sync_synchronize();
+//         started = 1;
+
+//         for(int i = 0; i < 512; i++) {
+//             mem[i] = kalloc(true);
+//             memset(mem[i], 1, PGSIZE);
+//             printf("mem = %p, data = %d\n", mem[i], mem[i][0]);
+//         }
+//         printf("cpu %d alloc over\n", cpuid);
+//         over_1 = 1;
+        
+//         while(over_1 == 0 || over_2 == 0);
+        
+//         for(int i = 0; i < 512; i++)
+//             kfree((void *)mem[i], true);
+//         printf("cpu %d free over\n", cpuid);
+
+//     } else {
+
+//         while(started == 0);
+//         __sync_synchronize();
+//         printf("cpu %d is booting!\n", cpuid);
+        
+//         for(int i = 512; i < 1024; i++) {
+//             mem[i] = kalloc(true);
+//             memset(mem[i], 1, PGSIZE);
+//             printf("mem = %p, data = %d\n", mem[i], mem[i][0]);
+//         }
+//         printf("cpu %d alloc over\n", cpuid);
+//         over_2 = 1;
+
+//         while(over_1 == 0 || over_2 == 0);
+
+//         for(int i = 512; i < 1024; i++)
+//             kfree((void *)mem[i], true);
+//         printf("cpu %d free over\n", cpuid);        
+ 
+//     }
+//     while (1);    
+// }
 
 int main()
 {
     int cpuid = r_tp();
+
     if(cpuid == 0) {
-        uart_init();
+
         print_init();
-        printf("cpu %d is booting!\n", cpuid);        
+        kinit();
+        kvminit();
+        kvminithart();
+
+        printf("cpu %d is booting!\n", cpuid);
         __sync_synchronize();
-        started = 1;
-        initlock(&addl,"add");
-        acquire(&addl);
-        for(int i = 0; i < 1000000; i++)
-            sum++;
-        printf("cpu %d report: sum = %d\n", cpuid, sum);
-        release(&addl);
+        // started = 1;
+
+        pgtbl_t test_pgtbl = kalloc(true);
+        memset(test_pgtbl,0,PGSIZE);
+        uint64 mem[5];
+        for(int i = 0; i < 5; i++){
+            mem[i] = (uint64)kalloc(false);
+        }
+
+        printf("\ntest-1\n\n");    
+        vm_mappages(test_pgtbl, 0, mem[0], PGSIZE, PTE_R);
+        vm_mappages(test_pgtbl, PGSIZE * 10, mem[1], PGSIZE / 2, PTE_R | PTE_W);
+        vm_mappages(test_pgtbl, PGSIZE * 512, mem[2], PGSIZE - 1, PTE_R | PTE_X);
+        vm_mappages(test_pgtbl, PGSIZE * 512 * 512, mem[2], PGSIZE, PTE_R | PTE_X);
+        vm_mappages(test_pgtbl, MAXVA - PGSIZE, mem[4], PGSIZE, PTE_W);
+        vm_print(test_pgtbl);
+
+        printf("\ntest-2\n\n");    
+        // vm_mappages(test_pgtbl, 0, mem[0], PGSIZE, PTE_W);
+        vm_unmappages(test_pgtbl, PGSIZE * 10, PGSIZE, true);
+        vm_unmappages(test_pgtbl, PGSIZE * 512, PGSIZE, true);
+        vm_print(test_pgtbl);
+
     } else {
+
         while(started == 0);
         __sync_synchronize();
         printf("cpu %d is booting!\n", cpuid);
-        acquire(&addl);
-        for(int i = 0; i < 1000000; i++)
-            sum++;
-        printf("cpu %d report: sum = %d\n", cpuid, sum);
-        release(&addl);
-    }   
-    while (1); 
+         
+    }
+    while (1);    
 }

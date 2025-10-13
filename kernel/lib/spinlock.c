@@ -1,7 +1,6 @@
 #include "lib/lock.h"
-#include "lib/print.h"
+#include "defs.h"
 #include "proc/proc.h"
-#include "riscv.h"
 
 
 void

@@ -8,7 +8,7 @@ typedef struct cpu {
     int intena;     // 第一次关中断前的状态
 } cpu_t;
 
-int     cpuid(void);
-cpu_t*  mycpu(void);
+// int     cpuid(void);
+// cpu_t*  mycpu(void);
 
 #endif

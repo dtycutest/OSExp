@@ -1,10 +1,7 @@
 #include <stdarg.h>
 
-#include "lib/lock.h"
 #include "riscv.h"
-#include "lib/defs.h"
-#include "proc/proc.h"
-#include "dev/uart.h"
+#include "defs.h"
 
 #define BACKSPACE 0x100
 #define C(x)  ((x)-'@')  // Control-x

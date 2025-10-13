@@ -1,9 +1,8 @@
 // 标准输出和报错机制
 #include <stdarg.h>
-#include "lib/print.h"
 #include "lib/lock.h"
-#include "types.h"
-#include "lib/defs.h"
+#include "common.h"
+#include "defs.h"
 
 volatile int panicked = 0;
 

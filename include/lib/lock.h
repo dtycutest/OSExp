@@ -12,12 +12,12 @@ struct spinlock {
 };
 typedef struct spinlock spinlock_t;
 
-void push_off();
-void pop_off();
+// void push_off();
+// void pop_off();
 
-void initlock(spinlock_t* lk, char* name);
-void acquire(spinlock_t* lk);
-void release(spinlock_t* lk);
-int holding(spinlock_t* lk); 
+// void initlock(spinlock_t* lk, char* name);
+// void acquire(spinlock_t* lk);
+// void release(spinlock_t* lk);
+// int holding(spinlock_t* lk); 
 
 #endif
