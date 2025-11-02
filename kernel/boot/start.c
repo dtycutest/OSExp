@@ -1,5 +1,6 @@
 #include "riscv.h"
 #include "param.h"
+#include "defs.h"
 
 __attribute__ ((aligned (16))) uint8 CPU_stack[4096 * NCPU];
 
@@ -26,6 +27,9 @@ void start()
     // 配置物理内存保护(PMP)，给予管理者模式访问全部物理内存的权限
     w_pmpaddr0(0x3fffffffffffffull);  // 设置PMP地址范围
     w_pmpcfg0(0xf);                   // 设置PMP配置(读写执行权限)
+
+    // ask for clock interrupts.
+    timerinit();
 
     int id = r_mhartid();
     w_tp(id);

@@ -135,7 +135,7 @@ void
 kvminit(void)
 {
   kernel_pagetable = kvmmake();
-  vm_print(kernel_pagetable);
+  // vm_print(kernel_pagetable);
 }
 
 // Switch h/w page table register to the kernel's page table,
@@ -332,10 +332,10 @@ kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm)
 //   return newsz;
 // }
 
-// // Deallocate user pages to bring the process size from oldsz to
-// // newsz.  oldsz and newsz need not be page-aligned, nor does newsz
-// // need to be less than oldsz.  oldsz can be larger than the actual
-// // process size.  Returns the new process size.
+// // // Deallocate user pages to bring the process size from oldsz to
+// // // newsz.  oldsz and newsz need not be page-aligned, nor does newsz
+// // // need to be less than oldsz.  oldsz can be larger than the actual
+// // // process size.  Returns the new process size.
 // uint64
 // uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 // {

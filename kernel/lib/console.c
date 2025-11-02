@@ -16,8 +16,8 @@ consputc(int c)
 {
   if(c == BACKSPACE){
     // if the user typed backspace, overwrite with a space.
-    uart_putc_sync('\b'); uart_putc_sync(' '); uart_putc_sync('\b');
+    uartputc_sync('\b'); uartputc_sync(' '); uartputc_sync('\b');
   } else {
-    uart_putc_sync(c);
+    uartputc_sync(c);
   }
 }

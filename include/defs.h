@@ -95,3 +95,35 @@ void            kfree(void* page, bool in_kernel);
 // int             copyout(pagetable_t, uint64, char *, uint64);
 // int             copyin(pagetable_t, char *, uint64, uint64);
 // int             copyinstr(pagetable_t, char *, uint64, uint64);
+
+//timer.c
+void   timerinit();       // 时钟初始化(in M-mode)
+
+void   timer_create();     // 时钟创建
+void   timer_update();     // 时钟更新(ticks++)
+uint64 timer_get_ticks();  // 获取时钟的tick
+
+
+//trap.c
+void trap_kernel_init();
+void trap_kernel_inithart();
+void trap_kernel_handler();
+
+// 辅助函数: 外设中断和时钟中断处理
+
+void external_interrupt_handler();
+void timer_interrupt_handler();
+
+
+//plic.h
+void plicinit(void);          // 设置中断优先级
+void plicinithart(void);      // 使能中断开关
+int  plic_claim(void);         // 获取中断号
+void plic_complete(int irq);   // 告知中断响应完成
+
+// uart.c
+void            uartinit(void);
+void            uartintr(void);
+// void            uartputc(int);
+void            uartputc_sync(int);
+int             uartgetc(void);

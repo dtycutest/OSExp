@@ -32,7 +32,7 @@
 extern volatile int panicked; // from printf.c
 
 // uart 初始化
-void uart_init(void)
+void uartinit(void)
 {
   // 关闭中断
   WriteReg(IER, 0x00);
@@ -55,7 +55,7 @@ void uart_init(void)
 }
 
 // 单个字符输出
-void uart_putc_sync(int c)
+void uartputc_sync(int c)
 {
   push_off();
 
@@ -72,7 +72,7 @@ void uart_putc_sync(int c)
 
 // 单个字符输入
 // 失败返回-1
-int uart_getc_sync(void)
+int uartgetc(void)
 {
   if(ReadReg(LSR) & 0x01){
     return ReadReg(RHR);
@@ -82,12 +82,12 @@ int uart_getc_sync(void)
 }
 
 // 中断处理(键盘输入->屏幕输出)
-void uart_intr(void)
+void uartintr(void)
 {
   while(1)
   {
-    int c = uart_getc_sync();
+    int c = uartgetc();
     if(c == -1) break;
-    uart_putc_sync(c);
+    uartputc_sync(c);
   }
 }
