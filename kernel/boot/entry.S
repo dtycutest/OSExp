@@ -9,16 +9,6 @@ _entry:
         # sp = CPU_stack + ((hartid + 1) * 4096)
         # 将sp置于当前CPU的内核栈的栈顶
         la sp, CPU_stack
-
-        #清空.bss段
-        la t0,edata
-        la t1,end
-bss_loop:
-        beq t0,t1,bss_done
-        sd zero,0(t0)
-        addi t0,t0,8
-        j bss_loop
-bss_done:
         li a0, 4096
         csrr a1, mhartid
         addi a1, a1, 1

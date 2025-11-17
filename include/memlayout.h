@@ -49,7 +49,15 @@
 
 // map the trampoline page to the highest address,
 // in both user and kernel space.
-#define TRAMPOLINE (MAXVA - PGSIZE)
+#define PGSIZE      4096
+#define TRAMPOLINE (MAXVA - PGSIZE)  // 用户虚拟空间中 trampoline 的虚拟地址
+#define TRAPFRAME   (TRAMPOLINE - PGSIZE)
+#define USTACK_TOP  (TRAPFRAME)           // 用户栈顶
+#define USTACK_BASE (USTACK_TOP - PGSIZE) // 用户栈底虚拟地址(含)
+#define HEAP_TOP    (USTACK_BASE)         // heap 的顶部（初始）
+#define UCODE       (PGSIZE)              // 用户代码+数据放在最低可访问页：0x1000
+#define UNMAPPED    (0x0)                 // lowest page left unmapped
+
 
 // map kernel stacks beneath the trampoline,
 // each surrounded by invalid guard pages.

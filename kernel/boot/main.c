@@ -27,6 +27,7 @@ int main()
         printf("cpu %d is booting!\n", cpuid);
         __sync_synchronize();
         started = 1;
+        proc_make_first();
     } else {
 
         while(started == 0);

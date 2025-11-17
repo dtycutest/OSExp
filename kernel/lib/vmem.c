@@ -122,11 +122,10 @@ kvmmake(void)
 
   // map the trampoline for trap entry/exit to
   // the highest virtual address in the kernel.
-  // kvmmap(kpgtbl, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+  kvmmap(kpgtbl, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 
-  // allocate and map a kernel stack for each process.
-  // proc_mapstacks(kpgtbl);
-  
+  proc_mapstacks(kpgtbl);
+
   return kpgtbl;
 }
 
@@ -153,60 +152,60 @@ kvminithart()
   sfence_vma();
 }
 
-// // Return the address of the PTE in page table pagetable
-// // that corresponds to virtual address va.  If alloc!=0,
-// // create any required page-table pages.
-// //
-// // The risc-v Sv39 scheme has three levels of page-table
-// // pages. A page-table page contains 512 64-bit PTEs.
-// // A 64-bit virtual address is split into five fields:
-// //   39..63 -- must be zero.
-// //   30..38 -- 9 bits of level-2 index.
-// //   21..29 -- 9 bits of level-1 index.
-// //   12..20 -- 9 bits of level-0 index.
-// //    0..11 -- 12 bits of byte offset within the page.
-// pte_t *
-// walk(pagetable_t pagetable, uint64 va, int alloc)
-// {
-//   if(va >= MAXVA)
-//     panic("walk");
+// Return the address of the PTE in page table pagetable
+// that corresponds to virtual address va.  If alloc!=0,
+// create any required page-table pages.
+//
+// The risc-v Sv39 scheme has three levels of page-table
+// pages. A page-table page contains 512 64-bit PTEs.
+// A 64-bit virtual address is split into five fields:
+//   39..63 -- must be zero.
+//   30..38 -- 9 bits of level-2 index.
+//   21..29 -- 9 bits of level-1 index.
+//   12..20 -- 9 bits of level-0 index.
+//    0..11 -- 12 bits of byte offset within the page.
+pte_t *
+walk(pagetable_t pagetable, uint64 va, int alloc)
+{
+  if(va >= MAXVA)
+    panic("walk");
 
-//   for(int level = 2; level > 0; level--) {
-//     pte_t *pte = &pagetable[PX(level, va)];
-//     if(*pte & PTE_V) {
-//       pagetable = (pagetable_t)PTE2PA(*pte);
-//     } else {
-//       if(!alloc || (pagetable = (pte_t*)kalloc()) == 0)
-//         return 0;
-//       memset(pagetable, 0, PGSIZE);
-//       *pte = PA2PTE(pagetable) | PTE_V;
-//     }
-//   }
-//   return &pagetable[PX(0, va)];
-// }
+  for(int level = 2; level > 0; level--) {
+    pte_t *pte = &pagetable[PX(level, va)];
+    if(*pte & PTE_V) {
+      pagetable = (pagetable_t)PTE2PA(*pte);
+    } else {
+      if(!alloc || (pagetable = (pte_t*)kalloc(0)) == 0)
+        return 0;
+      memset(pagetable, 0, PGSIZE);
+      *pte = PA2PTE(pagetable) | PTE_V;
+    }
+  }
+  return &pagetable[PX(0, va)];
+}
 
-// // Look up a virtual address, return the physical address,
-// // or 0 if not mapped.
-// // Can only be used to look up user pages.
-// uint64
-// walkaddr(pagetable_t pagetable, uint64 va)
-// {
-//   pte_t *pte;
-//   uint64 pa;
+// Look up a virtual address, return the physical address,
+// or 0 if not mapped.
+// Can only be used to look up user pages.
+uint64
+walkaddr(pagetable_t pagetable, uint64 va)
+{
+  pte_t *pte;
+  uint64 pa;
 
-//   if(va >= MAXVA)
-//     return 0;
+  if(va >= MAXVA)
+    return 0;
 
-//   pte = walk(pagetable, va, 0);
-//   if(pte == 0)
-//     return 0;
-//   if((*pte & PTE_V) == 0)
-//     return 0;
-//   if((*pte & PTE_U) == 0)
-//     return 0;
-//   pa = PTE2PA(*pte);
-//   return pa;
-// }
+  pte = walk(pagetable, va, 0);
+  if(pte == 0)
+    return 0;
+  if((*pte & PTE_V) == 0)
+    return 0;
+  if((*pte & PTE_U) == 0)
+    return 0;
+  pa = PTE2PA(*pte);
+  return pa;
+}
 
 // add a mapping to the kernel page table.
 // only used when booting.
@@ -216,37 +215,37 @@ kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm)
 {
   // if(mappages(kpgtbl, va, sz, pa, perm) != 0)
   //   panic("kvmmap");
-  vm_mappages(kpgtbl,va,pa,sz,perm);
+  vm_mappages(kpgtbl, va, pa, sz , perm);
 }
 
-// // Create PTEs for virtual addresses starting at va that refer to
-// // physical addresses starting at pa. va and size might not
-// // be page-aligned. Returns 0 on success, -1 if walk() couldn't
-// // allocate a needed page-table page.
-// int
-// mappages(pagetable_t pagetable, uint64 va,  uint64 pa,uint64 size, int perm)
-// {
-//   uint64 a, last;
-//   pte_t *pte;
+// Create PTEs for virtual addresses starting at va that refer to
+// physical addresses starting at pa. va and size might not
+// be page-aligned. Returns 0 on success, -1 if walk() couldn't
+// allocate a needed page-table page.
+int
+mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
+{
+  uint64 a, last;
+  pte_t *pte;
 
-//   if(size == 0)
-//     panic("mappages: size");
+  if(size == 0)
+    panic("mappages: size");
   
-//   a = PGROUNDDOWN(va);
-//   last = PGROUNDDOWN(va + size - 1);
-//   for(;;){
-//     if((pte = walk(pagetable, a, 1)) == 0)
-//       return -1;
-//     if(*pte & PTE_V)
-//       panic("mappages: remap");
-//     *pte = PA2PTE(pa) | perm | PTE_V;
-//     if(a == last)
-//       break;
-//     a += PGSIZE;
-//     pa += PGSIZE;
-//   }
-//   return 0;
-// }
+  a = PGROUNDDOWN(va);
+  last = PGROUNDDOWN(va + size - 1);
+  for(;;){
+    if((pte = walk(pagetable, a, 1)) == 0)
+      return -1;
+    if(*pte & PTE_V)
+      panic("mappages: remap");
+    *pte = PA2PTE(pa) | perm | PTE_V;
+    if(a == last)
+      break;
+    a += PGSIZE;
+    pa += PGSIZE;
+  }
+  return 0;
+}
 
 // // Remove npages of mappings starting from va. va must be
 // // page-aligned. The mappings must exist.
@@ -275,34 +274,34 @@ kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm)
 //   }
 // }
 
-// // create an empty user page table.
-// // returns 0 if out of memory.
-// pagetable_t
-// uvmcreate()
-// {
-//   pagetable_t pagetable;
-//   pagetable = (pagetable_t) kalloc();
-//   if(pagetable == 0)
-//     return 0;
-//   memset(pagetable, 0, PGSIZE);
-//   return pagetable;
-// }
+// create an empty user page table.
+// returns 0 if out of memory.
+pagetable_t
+uvmcreate()
+{
+  pagetable_t pagetable;
+  pagetable = (pagetable_t) kalloc(0);
+  if(pagetable == 0)
+    return 0;
+  memset(pagetable, 0, PGSIZE);
+  return pagetable;
+}
 
-// // Load the user initcode into address 0 of pagetable,
-// // for the very first process.
-// // sz must be less than a page.
-// void
-// uvmfirst(pagetable_t pagetable, uchar *src, uint sz)
-// {
-//   char *mem;
+// Load the user initcode into address 0 of pagetable,
+// for the very first process.
+// sz must be less than a page.
+void
+uvmfirst(pagetable_t pagetable, uchar *src, uint sz)
+{
+  char *mem;
 
-//   if(sz >= PGSIZE)
-//     panic("uvmfirst: more than a page");
-//   mem = kalloc();
-//   memset(mem, 0, PGSIZE);
-//   mappages(pagetable, 0, PGSIZE, (uint64)mem, PTE_W|PTE_R|PTE_X|PTE_U);
-//   memmove(mem, src, sz);
-// }
+  if(sz >= PGSIZE)
+    panic("uvmfirst: more than a page");
+  mem = kalloc(0);
+  memset(mem, 0, PGSIZE);
+  mappages(pagetable, UCODE, PGSIZE, (uint64)mem, PTE_W|PTE_R|PTE_X|PTE_U);
+  memmove(mem, src, sz);
+}
 
 // // Allocate PTEs and physical memory to grow process from oldsz to
 // // newsz, which need not be page aligned.  Returns new size or 0 on error.
@@ -332,10 +331,10 @@ kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm)
 //   return newsz;
 // }
 
-// // // Deallocate user pages to bring the process size from oldsz to
-// // // newsz.  oldsz and newsz need not be page-aligned, nor does newsz
-// // // need to be less than oldsz.  oldsz can be larger than the actual
-// // // process size.  Returns the new process size.
+// // Deallocate user pages to bring the process size from oldsz to
+// // newsz.  oldsz and newsz need not be page-aligned, nor does newsz
+// // need to be less than oldsz.  oldsz can be larger than the actual
+// // process size.  Returns the new process size.
 // uint64
 // uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 // {
