@@ -1,11 +1,11 @@
 #include "common.h"
 #include "riscv.h"
 // struct buf;
-// struct context;
+struct context;
 // struct file;
 // struct inode;
 // struct pipe;
-// struct proc;
+struct proc;
 struct spinlock;
 // struct sleeplock;
 // struct stat;
@@ -24,13 +24,6 @@ int             strlen(const char*);
 int             strncmp(const char*, const char*, uint);
 char*           strncpy(char*, const char*, int);
 
-// uart.c
-// void            uartinit(void);
-// void            uartintr(void);
-// void            uartputc(int);
-void            uart_putc_sync(int);
-// int             uartgetc(void);
-
 //print.c
 void print_init(void);
 void printf(char* fmt, ...);
@@ -41,25 +34,25 @@ void assert(bool condition, const char* warning);
 void proc_make_first(void);
 
 int             cpuid(void);
-// void            exit(int);
-// int             fork(void);
-// int             growproc(int);
+void            exit(int);
+int             fork(void);
+int             growproc(int);
 void            proc_mapstacks(pagetable_t);
 // pagetable_t     proc_pagetable(struct proc *);
-// void            proc_freepagetable(pagetable_t, uint64);
-// int             kill(int);
-// int             killed(struct proc*);
-// void            setkilled(struct proc*);
+void            proc_freepagetable(pagetable_t, uint64);
+int             kill(int);
+int             killed(struct proc*);
+void            setkilled(struct proc*);
 struct cpu*     mycpu(void);
 // struct cpu*     getmycpu(void);
 struct proc*    myproc();
-// void            procinit(void);
+void            procinit(void);
 // void            scheduler(void) __attribute__((noreturn));
 // void            sched(void);
-// void            sleep(void*, struct spinlock*);
+void            sleep(void*, struct spinlock*);
 // void            userinit(void);
-// int             wait(uint64);
-// void            wakeup(void*);
+int             wait(uint64);
+void            wakeup(void*);
 // void            yield(void);
 // int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 // int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
@@ -79,24 +72,29 @@ void*           kalloc(bool in_kernel);
 void            kfree(void* page, bool in_kernel);
 
 // vm.c
-// void            vm_print(pagetable_t pgtbl);
-// void            kvminit(void);
-// void            kvminithart(void);
+//kvm:
+void   vm_print(pagetable_t pgtbl);
+pte_t* vm_getpte(pagetable_t pgtbl, uint64 va, int alloc);
+void   vm_mappages(pagetable_t pgtbl, uint64 va, uint64 pa, uint64 len, int perm);
+void   vm_unmappages(pagetable_t pgtbl, uint64 va, uint64 len, int freeit);
+void   kvminit();
+void   kvminithart();
 void            kvmmap(pagetable_t, uint64, uint64, uint64, int);
+//uvm:
 int             mappages(pagetable_t, uint64, uint64, uint64, int);
 pagetable_t     uvmcreate(void);
 void            uvmfirst(pagetable_t, uchar *, uint);
-// uint64          uvmalloc(pagetable_t, uint64, uint64, int);
-// uint64          uvmdealloc(pagetable_t, uint64, uint64);
-// int             uvmcopy(pagetable_t, pagetable_t, uint64);
-// void            uvmfree(pagetable_t, uint64);
-// void            uvmunmap(pagetable_t, uint64, uint64, int);
-// void            uvmclear(pagetable_t, uint64);
+uint64          uvmalloc(pagetable_t, uint64, uint64, int);
+uint64          uvmdealloc(pagetable_t, uint64, uint64);
+int             uvmcopy(pagetable_t, pagetable_t, uint64);
+void            uvmfree(pagetable_t, uint64);
+void            uvmunmap(pagetable_t, uint64, uint64, int);
+void            uvmclear(pagetable_t, uint64);
 pte_t *         walk(pagetable_t, uint64, int);
 uint64          walkaddr(pagetable_t, uint64);
-// int             copyout(pagetable_t, uint64, char *, uint64);
-// int             copyin(pagetable_t, char *, uint64, uint64);
-// int             copyinstr(pagetable_t, char *, uint64, uint64);
+int             copyout(pagetable_t, uint64, char *, uint64);
+int             copyin(pagetable_t, char *, uint64, uint64);
+int             copyinstr(pagetable_t, char *, uint64, uint64);
 
 //timer.c
 void   timerinit();       // 时钟初始化(in M-mode)
@@ -130,3 +128,23 @@ void            uartintr(void);
 // void            uartputc(int);
 void            uartputc_sync(int);
 int             uartgetc(void);
+
+// syscall.c
+void            argint(int, int*);
+int             argstr(int, char*, int);
+void            argaddr(int, uint64 *);
+int             fetchstr(uint64, char*, int);
+int             fetchaddr(uint64, uint64*);
+void            syscall();
+// number of elements in fixed-size array
+#define NELEM(x) (sizeof(x)/sizeof((x)[0]))
+
+
+// scheduler.c
+void            scheduler(void) __attribute__((noreturn));
+void            sched(void);
+void            yield(void);
+
+
+// swtch.S
+void            swtch(struct context*, struct context*);

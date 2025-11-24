@@ -14,6 +14,10 @@
         "types.h": "c",
         "defs.h": "c",
         "param.h": "c",
-        "memlayout.h": "c"
+        "memlayout.h": "c",
+        "vmem.h": "c",
+        "sysfunc.h": "c",
+        "pmem.h": "c",
+        "syscall.h": "c"
     }
 }

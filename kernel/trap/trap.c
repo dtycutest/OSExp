@@ -165,12 +165,12 @@ usertrap(void)
   w_stvec((uint64)kernelvec);
 
   struct proc *p = myproc();
-  uint64 scause = r_scause();
-  uint64 sepc = r_sepc();
+  // uint64 scause = r_scause();
+  // uint64 sepc = r_sepc();
   // uint64 stval = r_stval();
 
-  printf("[usertrap] pid=%d scause=0x%p sepc=0x%p\n",
-        p->pid, scause, sepc);
+  // printf("[usertrap] pid=%d scause=0x%p sepc=0x%p\n",
+  //       p->pid, scause, sepc);
 
   
   // save user program counter.
@@ -191,7 +191,7 @@ usertrap(void)
     // so enable only now that we're done with those registers.
     intr_on();
 
-    // syscall();
+    syscall();
   } 
   // else if((which_dev = devintr()) != 0){
   //   // ok
@@ -250,23 +250,5 @@ usertrapret(void)
   // and switches to user mode with sret.
   uint64 trampoline_userret = TRAMPOLINE + (userret - trampoline);
 
-        
-
-  // 1) print user code bytes: find PA of UCODE via walkaddr_pa, then read via P2V
-  // uint64 ucode_pa = walkaddr(p->pagetable, UCODE);
-  // if (ucode_pa) {
-  //   unsigned char *ucode_kva = (unsigned char *)(ucode_pa);
-  //   printf("DBG: UCODE pa = 0x%p, first bytes = %x %x %x %x %x %x %x %x\n",
-  //         (void*)ucode_pa,
-  //         ucode_kva[0], ucode_kva[1], ucode_kva[2], ucode_kva[3],
-  //         ucode_kva[4], ucode_kva[5], ucode_kva[6], ucode_kva[7]);
-  // } else {
-  //   printf("DBG: UCODE not mapped in user pagetable (walkaddr_pa returned 0)\n");
-  // }
-
-
-  // printf("TRAMPOLINE - > %p, TRAPFRAME - > %p \n",TRAMPOLINE,TRAPFRAME);
-  // printf("p->pagetable : UART:%p\n",walkaddr(p->pagetable,UART0));
-  
   ((void (*)(uint64))trampoline_userret)(satp);
 }

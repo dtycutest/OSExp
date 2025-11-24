@@ -31,17 +31,17 @@
 */
 
 
-void   vm_print(pagetable_t pgtbl);
-pte_t* vm_getpte(pagetable_t pgtbl, uint64 va, int alloc);
-void   vm_mappages(pagetable_t pgtbl, uint64 va, uint64 pa, uint64 len, int perm);
-void   vm_unmappages(pagetable_t pgtbl, uint64 va, uint64 len, int freeit);
+// void   vm_print(pagetable_t pgtbl);
+// pte_t* vm_getpte(pagetable_t pgtbl, uint64 va, int alloc);
+// void   vm_mappages(pagetable_t pgtbl, uint64 va, uint64 pa, uint64 len, int perm);
+// void   vm_unmappages(pagetable_t pgtbl, uint64 va, uint64 len, int freeit);
 
-void   kvminit();
-void   kvminithart();
+// void   kvminit();
+// void   kvminithart();
 
 // // void            kvminit(void);
 // // void            kvminithart(void);
-void            kvmmap(pagetable_t, uint64, uint64, uint64, int);
+// void            kvmmap(pagetable_t, uint64, uint64, uint64, int);
 // // int             mappages(pagetable_t, uint64, uint64, uint64, int);
 // pagetable_t     uvmcreate(void);
 // void            uvmfirst(pagetable_t, uchar *, uint);

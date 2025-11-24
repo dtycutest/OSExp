@@ -3,6 +3,9 @@
 
 #include "common.h"
 #include "riscv.h"
+#include "lib/lock.h"
+#include "param.h"
+
 
 // Saved registers for kernel context switches.
 typedef struct context {
@@ -79,17 +82,26 @@ typedef struct trapframe {
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 typedef struct proc {
+  struct spinlock lock;
   int pid;
   pagetable_t pagetable;            // 用户页表（类型按你工程定义）
-  uint64 heap_top;          // 用户堆顶
+  // uint64 heap_top;          // 用户堆顶
   uint64 ustack_pages;      // 用户栈页数
   trapframe_t* trapframe;          // 指向 trapframe（在内核中分配）
   uint64 kstack;            // 内核栈虚拟地址
   context_t context;            // 内核上下文（用于进程切换）
   // 你可补充其它字段(如 state)但实验不需要多进程功能
   uint64 sz;
+  char name[16];               // Process name (debugging)
+  enum procstate state;        // Process state
+  // wait_lock must be held when using this:
+  struct proc *parent;         // Parent process
+  void *chan;                  // If non-zero, sleeping on chan
+  int killed;                  // If non-zero, have been killed
+  int xstate;                  // Exit status to be returned to parent's wait
 } proc_t;
 
+extern struct proc proc[NPROC];
 
 typedef struct cpu {
     int noff;       // 关中断的深度

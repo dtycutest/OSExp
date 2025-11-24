@@ -3,7 +3,6 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "defs.h"
-#include "mem/vmem.h"
 
 volatile static int started = 0;
 
@@ -18,6 +17,7 @@ int main()
         kinit();
         kvminit();
         kvminithart();
+        procinit();
         trap_kernel_init();
         trap_kernel_inithart();
         plicinit();
@@ -38,5 +38,6 @@ int main()
         printf("cpu %d is booting!\n", cpuid);
         
     }
-    while (1);    
+  // 所有CPU都进入调度器，开始调度用户进程
+  scheduler();       
 }
