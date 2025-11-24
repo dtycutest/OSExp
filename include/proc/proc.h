@@ -99,6 +99,9 @@ typedef struct proc {
   void *chan;                  // If non-zero, sleeping on chan
   int killed;                  // If non-zero, have been killed
   int xstate;                  // Exit status to be returned to parent's wait
+  
+  struct file *ofile[NOFILE];  // Open files
+  struct inode *cwd;           // Current directory
 } proc_t;
 
 extern struct proc proc[NPROC];

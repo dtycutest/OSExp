@@ -11,8 +11,7 @@ int main()
     int cpuid = r_tp();
 
     if(cpuid == 0) {
-
-        uartinit();
+        consoleinit();
         print_init();
         kinit();
         kvminit();
@@ -22,12 +21,18 @@ int main()
         trap_kernel_inithart();
         plicinit();
         plicinithart();
+        binit();             // 缓冲区缓存初始化
+        iinit();             // inode表初始化
+        fileinit();          // 文件表初始化
+        virtio_disk_init();  // 虚拟硬盘初始化
         intr_on();
 
         printf("cpu %d is booting!\n", cpuid);
+
+        proc_make_first();
+
         __sync_synchronize();
         started = 1;
-        proc_make_first();
     } else {
 
         while(started == 0);

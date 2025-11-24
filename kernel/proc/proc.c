@@ -212,6 +212,8 @@ void proc_make_first(void) {
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
 
+  p->cwd = namei("/");
+
   p->state = RUNNABLE;
 
   release(&p->lock);
@@ -260,7 +262,7 @@ growproc(int n)
 int
 fork(void)
 {
-  // int i;
+  int i;
   int pid;
   struct proc *np;
   struct proc *p = myproc();
@@ -284,11 +286,11 @@ fork(void)
   // Cause fork to return 0 in the child.
   np->trapframe->a0 = 0;
 
-  // // increment reference counts on open file descriptors.
-  // for(i = 0; i < NOFILE; i++)
-  //   if(p->ofile[i])
-  //     np->ofile[i] = filedup(p->ofile[i]);
-  // np->cwd = idup(p->cwd);
+  // increment reference counts on open file descriptors.
+  for(i = 0; i < NOFILE; i++)
+    if(p->ofile[i])
+      np->ofile[i] = filedup(p->ofile[i]);
+  np->cwd = idup(p->cwd);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
@@ -357,18 +359,18 @@ exit(int status)
     panic("init exiting");
 
   // Close all open files.
-  // for(int fd = 0; fd < NOFILE; fd++){
-  //   if(p->ofile[fd]){
-  //     struct file *f = p->ofile[fd];
-  //     fileclose(f);
-  //     p->ofile[fd] = 0;
-  //   }
-  // }
+  for(int fd = 0; fd < NOFILE; fd++){
+    if(p->ofile[fd]){
+      struct file *f = p->ofile[fd];
+      fileclose(f);
+      p->ofile[fd] = 0;
+    }
+  }
 
-  // begin_op();
-  // iput(p->cwd);
-  // end_op();
-  // p->cwd = 0;
+  begin_op();
+  iput(p->cwd);
+  end_op();
+  p->cwd = 0;
 
   acquire(&wait_lock);
 
@@ -531,4 +533,65 @@ killed(struct proc *p)
   k = p->killed;
   release(&p->lock);
   return k;
+}
+
+
+// Copy to either a user address, or kernel address,
+// depending on usr_dst.
+// Returns 0 on success, -1 on error.
+int
+either_copyout(int user_dst, uint64 dst, void *src, uint64 len)
+{
+  struct proc *p = myproc();
+  if(user_dst){
+    return copyout(p->pagetable, dst, src, len);
+  } else {
+    memmove((char *)dst, src, len);
+    return 0;
+  }
+}
+
+// Copy from either a user address, or kernel address,
+// depending on usr_src.
+// Returns 0 on success, -1 on error.
+int
+either_copyin(void *dst, int user_src, uint64 src, uint64 len)
+{
+  struct proc *p = myproc();
+  if(user_src){
+    return copyin(p->pagetable, dst, src, len);
+  } else {
+    memmove(dst, (char*)src, len);
+    return 0;
+  }
+}
+
+// Print a process listing to console.  For debugging.
+// Runs when user types ^P on console.
+// No lock to avoid wedging a stuck machine further.
+void
+procdump(void)
+{
+  static char *states[] = {
+  [UNUSED]    "unused",
+  [USED]      "used",
+  [SLEEPING]  "sleep ",
+  [RUNNABLE]  "runble",
+  [RUNNING]   "run   ",
+  [ZOMBIE]    "zombie"
+  };
+  struct proc *p;
+  char *state;
+
+  printf("\n");
+  for(p = proc; p < &proc[NPROC]; p++){
+    if(p->state == UNUSED)
+      continue;
+    if(p->state >= 0 && p->state < NELEM(states) && states[p->state])
+      state = states[p->state];
+    else
+      state = "???";
+    printf("%d %s %s", p->pid, state, p->name);
+    printf("\n");
+  }
 }
