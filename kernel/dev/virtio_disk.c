@@ -65,14 +65,14 @@ virtio_disk_init(void)
 
   initlock(&disk.vdisk_lock, "virtio_disk");
 
-  printf("magic = %x\n", *R(VIRTIO_MMIO_MAGIC_VALUE));
-  printf("magic = %x\n", *R(VIRTIO_MMIO_VERSION));
-  printf("magic = %x\n", *R(VIRTIO_MMIO_DEVICE_ID));
-  printf("magic = %x\n", *R(VIRTIO_MMIO_VENDOR_ID));
+  // printf("magic = %x\n", *R(VIRTIO_MMIO_MAGIC_VALUE));
+  // printf("magic = %x\n", *R(VIRTIO_MMIO_VERSION));
+  // printf("magic = %x\n", *R(VIRTIO_MMIO_DEVICE_ID));
+  // printf("magic = %x\n", *R(VIRTIO_MMIO_VENDOR_ID));
 
 
   if(*R(VIRTIO_MMIO_MAGIC_VALUE) != 0x74726976 ||
-    //  *R(VIRTIO_MMIO_VERSION) != 2 ||
+      *R(VIRTIO_MMIO_VERSION) != 2 ||
      *R(VIRTIO_MMIO_DEVICE_ID) != 2 ||
      *R(VIRTIO_MMIO_VENDOR_ID) != 0x554d4551){
     panic("could not find virtio disk");
@@ -124,9 +124,9 @@ virtio_disk_init(void)
     panic("virtio disk max queue too short");
 
   // allocate and zero queue memory.
-  disk.desc = kalloc(0);
-  disk.avail = kalloc(0);
-  disk.used = kalloc(0);
+  disk.desc = kalloc(1);
+  disk.avail = kalloc(1);
+  disk.used = kalloc(1);
   if(!disk.desc || !disk.avail || !disk.used)
     panic("virtio disk kalloc");
   memset(disk.desc, 0, PGSIZE);
@@ -300,6 +300,7 @@ virtio_disk_rw(struct buf *b, int write)
 void
 virtio_disk_intr()
 {
+  // printf("virtio_disk_intr\n");
   acquire(&disk.vdisk_lock);
 
   // the device won't raise another interrupt until we tell it

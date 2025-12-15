@@ -34,50 +34,65 @@ fetchstr(uint64 addr, char *buf, int max)
 extern uint64 sys_fork(void);
 extern uint64 sys_exit(void);
 extern uint64 sys_wait(void);
-// extern uint64 sys_pipe(void);
-// extern uint64 sys_read(void);
-// extern uint64 sys_kill(void);
-// extern uint64 sys_exec(void);
-// extern uint64 sys_fstat(void);
-// extern uint64 sys_chdir(void);
-// extern uint64 sys_dup(void);
-// extern uint64 sys_getpid(void);
+extern uint64 sys_pipe(void);
+extern uint64 sys_read(void);
+extern uint64 sys_kill(void);
+extern uint64 sys_exec(void);
+extern uint64 sys_fstat(void);
+extern uint64 sys_chdir(void);
+extern uint64 sys_dup(void);
+extern uint64 sys_getpid(void);
 extern uint64 sys_sbrk(void);
-// extern uint64 sys_sleep(void);
-// extern uint64 sys_uptime(void);
-// extern uint64 sys_open(void);
-// extern uint64 sys_write(void);
-// extern uint64 sys_mknod(void);
-// extern uint64 sys_unlink(void);
-// extern uint64 sys_link(void);
-// extern uint64 sys_mkdir(void);
-// extern uint64 sys_close(void);
+extern uint64 sys_sleep(void);
+extern uint64 sys_uptime(void);
+extern uint64 sys_open(void);
+extern uint64 sys_write(void);
+extern uint64 sys_mknod(void);
+extern uint64 sys_unlink(void);
+extern uint64 sys_link(void);
+extern uint64 sys_mkdir(void);
+extern uint64 sys_close(void);
+
 extern uint64 sys_print(void);
+
+extern uint64 sys_balloc(void);
+extern uint64 sys_bfree(void);
+
+extern uint64 sys_read_block(void);
+extern uint64 sys_write_block(void);
+extern uint64 sys_release_block(void);
+extern uint64 sys_show_buf(void);
 
 // 系统调用跳转
 static uint64 (*syscalls[])(void) = {
     [SYS_fork]    sys_fork,
     [SYS_exit]    sys_exit,
     [SYS_wait]    sys_wait,
-    // [SYS_pipe]    sys_pipe,
-    // [SYS_read]    sys_read,
-    // [SYS_kill]    sys_kill,
-    // [SYS_exec]    sys_exec,
-    // [SYS_fstat]   sys_fstat,
-    // [SYS_chdir]   sys_chdir,
-    // [SYS_dup]     sys_dup,
-    // [SYS_getpid]  sys_getpid,
+    [SYS_pipe]    sys_pipe,
+    [SYS_read]    sys_read,
+    [SYS_kill]    sys_kill,
+    [SYS_exec]    sys_exec,
+    [SYS_fstat]   sys_fstat,
+    [SYS_chdir]   sys_chdir,
+    [SYS_dup]     sys_dup,
+    [SYS_getpid]  sys_getpid,
     [SYS_sbrk]    sys_sbrk,
-    // [SYS_sleep]   sys_sleep,
-    // [SYS_uptime]  sys_uptime,
-    // [SYS_open]    sys_open,
-    // [SYS_write]   sys_write,
-    // [SYS_mknod]   sys_mknod,
-    // [SYS_unlink]  sys_unlink,
-    // [SYS_link]    sys_link,
-    // [SYS_mkdir]   sys_mkdir,
-    // [SYS_close]   sys_close,
+    [SYS_sleep]   sys_sleep,
+    [SYS_uptime]  sys_uptime,
+    [SYS_open]    sys_open,
+    [SYS_write]   sys_write,
+    [SYS_mknod]   sys_mknod,
+    [SYS_unlink]  sys_unlink,
+    [SYS_link]    sys_link,
+    [SYS_mkdir]   sys_mkdir,
+    [SYS_close]   sys_close,
     [SYS_print]     sys_print,
+    [SYS_alloc_block] sys_balloc,
+    [SYS_free_block] sys_bfree,
+    [SYS_show_buf] sys_show_buf,
+    [SYS_read_block] sys_read_block,
+    [SYS_write_block] sys_write_block,
+    [SYS_release_block] sys_release_block,
 };
 
 // 系统调用

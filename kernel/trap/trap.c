@@ -66,7 +66,7 @@ void trap_kernel_inithart()
 }
 
 // 外设中断处理 (基于PLIC)
-void external_interrupt_handler()
+int external_interrupt_handler()
 {
     uint64 scause = r_scause();
 
@@ -76,13 +76,12 @@ void external_interrupt_handler()
 
     // irq indicates which device interrupted.
     int irq = plic_claim();
-
     if(irq == UART0_IRQ){
       // int trap_id = scause & 0xf; 
       // printf("%s\n",interrupt_info[trap_id]);
       uartintr();
     } else if(irq == VIRTIO0_IRQ){
-    //   virtio_disk_intr();
+      virtio_disk_intr();
     } else if(irq){
       printf("unexpected interrupt irq=%d\n", irq);
     }
@@ -93,7 +92,7 @@ void external_interrupt_handler()
     if(irq)
       plic_complete(irq);
 
-    // return 1;
+    return 1;
   } else if(scause == 0x8000000000000001L){
     // software interrupt from a machine-mode timer interrupt,
     // forwarded by timervec in kernelvec.S.
@@ -110,9 +109,9 @@ void external_interrupt_handler()
     // the SSIP bit in sip.
     w_sip(r_sip() & ~2);
 
-    // return 2;
+    return 2;
   } else {
-    // return 0;
+    return 0;
   }
 }
 
@@ -126,9 +125,11 @@ void timer_interrupt_handler()
 // 内核态trap处理的核心逻辑
 void trap_kernel_handler()
 {
+    int which_dev=0;
+  
     uint64 sepc = r_sepc();          // 记录了发生异常时的pc值
     uint64 sstatus = r_sstatus();    // 与特权模式和中断相关的状态信息
-    // uint64 scause = r_scause();      // 引发trap的原因
+    uint64 scause = r_scause();      // 引发trap的原因
     // uint64 stval = r_stval();        // 发生trap时保存的附加信息(不同trap不一样)
     
     // printf("kerneltrap: scause=%p\n", scause);
@@ -139,12 +140,19 @@ void trap_kernel_handler()
     if(intr_get() != 0)
         panic("kerneltrap: interrupts enabled");
 
-    // int trap_id = scause & 0xf; 
-    // printf("%s\n",interrupt_info[trap_id]);
-    // printf("timer ticks: %d\n",timer_get_ticks());
+    // 处理设备中断
+    if((which_dev = external_interrupt_handler()) == 0){
+      // 如果不是设备中断，那就是内核错误
+      printf("scause %p\n", scause);
+      printf("sepc=%p stval=%p\n", r_sepc(), r_stval());
+      panic("kerneltrap");
+    }
 
-    // 中断异常处理核心逻辑
-    external_interrupt_handler();
+    // 内核中的进程调度
+    // 如果这是定时器中断，则让出 CPU。
+    // 允许在内核执行过程中进行进程切换
+    if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
+      yield();
 
     w_sepc(sepc);
     w_sstatus(sstatus);
@@ -155,7 +163,7 @@ extern char trampoline[], uservec[], userret[];
 void
 usertrap(void)
 {
-  // int which_dev = 0;
+  int which_dev = 0;
 
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
@@ -165,23 +173,18 @@ usertrap(void)
   w_stvec((uint64)kernelvec);
 
   struct proc *p = myproc();
-  // uint64 scause = r_scause();
-  // uint64 sepc = r_sepc();
-  // uint64 stval = r_stval();
-
-  // printf("[usertrap] pid=%d scause=0x%p sepc=0x%p\n",
-  //       p->pid, scause, sepc);
-
   
   // save user program counter.
   p->trapframe->epc = r_sepc();
   
   if(r_scause() == 8){
     // system call
-    printf("[usertrap] user made a syscall (ECALL)\n");
+    // printf("[usertrap] user made a syscall (ECALL)\n");
+    // int num = p->trapframe->a7;
+    // printf("pid %d syscall %d\n", p->pid, num);
 
-    // if(killed(p))
-    //   exit(-1);
+    if(killed(p))
+      exit(-1);
 
     // sepc points to the ecall instruction,
     // but we want to return to the next instruction.
@@ -193,23 +196,20 @@ usertrap(void)
 
     syscall();
   } 
-  // else if((which_dev = devintr()) != 0){
-  //   // ok
-  // } else {
-  //   printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
-  //   printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-  //   setkilled(p);
-  // }
-  else{
-    external_interrupt_handler();
+  else if((which_dev = external_interrupt_handler()) != 0){
+    // ok
+  } else {
+    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+    printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+    setkilled(p);
   }
 
-  // if(killed(p))
-  //   exit(-1);
+  if(killed(p))
+    exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  // if(which_dev == 2)
-  //   yield();
+  if(which_dev == 2)
+    yield();
 
   usertrapret();
 }

@@ -152,3 +152,19 @@ bunpin(struct buf *b) {
 }
 
 
+void show_buf()
+{
+  struct buf *b;
+
+    printf("=== Buffer Cache Status ===\n");
+
+    b = bcache.head.next;
+    while(b != &bcache.head){
+        printf("buf %p  blockno=%d  valid=%d  ref=%d\n",
+               b, b->blockno, b->valid, b->refcnt);
+
+        b = b->next;
+    }
+
+    printf("===========================\n");
+}

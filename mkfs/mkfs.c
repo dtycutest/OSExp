@@ -5,381 +5,302 @@
 #include <fcntl.h>
 #include <assert.h>
 
-// disk layout: [ super block | inode bitmap | inode blocks | data bitmap | data blocks ]
+#define stat xv6_stat  // avoid clash with host struct stat
+#include "../include/common.h"
+#include "../include/fs/fs.h"
+#include "../include/fs/stat.h"
+#include "../include/param.h"
 
-#define FS_MAGIC 0x12345678
+#ifndef static_assert
+#define static_assert(a, b) do { switch (0) case 0: case (a): ; } while (0)
+#endif
 
-// super block
-typedef struct super_block {
-    unsigned int magic;
-    unsigned int block_size;
+#define NINODES 200
 
-    unsigned int inode_bitmap_start;
-    unsigned int inode_start;
-    unsigned int data_bitmap_start;
-    unsigned int data_start;
+// Disk layout:
+// [ boot block | sb block | log | inode blocks | free bit map | data blocks ]
 
-    unsigned int inode_blocks;
-    unsigned int data_blocks;
-    unsigned int total_blocks;
-} super_block_t;
-
-// inode 64 byte
-typedef struct inode_disk {
-    short type;
-    short major;
-    short minor;
-    short nlink;
-    unsigned int size;
-    unsigned int addrs[13];
-} inode_disk_t;
-
-// directory entry 32 byte
-typedef struct dirent {
-    unsigned short inode_num;
-    char name[30];
-} dirent_t;
-
-// 文件类型
-#define FT_UNUSED 0
-#define FT_DIR    1
-#define FT_FILE   2
-#define FT_DEVICE 3 
-
-// 常量定义 
-#define BLOCK_SIZE       1024 // 每个block占1024字节
-#define N_DATA_BLOCK     8192 // 1个block的bitmap管理的极限
-#define N_INODE_BLOCK    128  // 支持2048个文件
-#define N_BLOCK          (N_DATA_BLOCK + N_INODE_BLOCK + 3)  // 五个部分组合起来
-#define INODE_PER_BLOCK  (BLOCK_SIZE / sizeof(inode_disk_t)) // 每个block里的inode数量
-#define N_INODE          (N_INODE_BLOCK * INODE_PER_BLOCK)   // inode总数
-
-// 与inode管理的data block相关
-#define ENTRY_PER_BLOCK (BLOCK_SIZE / sizeof(unsigned int))  
-#define N_ADDRS_1 10
-#define N_ADDRS_2 2
-#define N_ADDRS_3 1
-#define N_ADDRS (N_ADDRS_1 + N_ADDRS_2 + N_ADDRS_3)
-
-// 确定inode所在的inode block序号
-#define INODE_LOCATE_BLOCK(inum, sb)  ((inum) / INODE_PER_BLOCK + sb.inode_start)
+int nbitmap = FSSIZE/(BSIZE*8) + 1;
+int ninodeblocks = NINODES / IPB + 1;
+int nlog = LOGSIZE;
+int nmeta;    // Number of meta blocks (boot, sb, nlog, inode, bitmap)
+int nblocks;  // Number of data blocks
 
 int fsfd;
-super_block_t sb;
+struct superblock sb;
+char zeroes[BSIZE];
+uint freeinode = 1;
+uint freeblock;
 
-// 大小端转换
-unsigned short xshort(unsigned short x)
+
+void balloc(int);
+void wsect(uint, void*);
+void winode(uint, struct dinode*);
+void rinode(uint inum, struct dinode *ip);
+void rsect(uint sec, void *buf);
+uint ialloc(ushort type);
+void iappend(uint inum, void *p, int n);
+
+// convert to intel byte order
+ushort
+xshort(ushort x)
 {
-    unsigned short y;
-    unsigned char* a = (unsigned char*)&y;
-    a[0] = x;
-    a[1] = x >> 8;
-    return y;
+  ushort y;
+  uchar *a = (uchar*)&y;
+  a[0] = x;
+  a[1] = x >> 8;
+  return y;
 }
 
-// 大小端转换
-unsigned int xint(unsigned int x)
+uint
+xint(uint x)
 {
-    unsigned int y;
-    unsigned char* a = (unsigned char*)&y;
-    a[0] = x;
-    a[1] = x >> 8;
-    a[2] = x >> 16;
-    a[3] = x >> 24;
-    return y;
+  uint y;
+  uchar *a = (uchar*)&y;
+  a[0] = x;
+  a[1] = x >> 8;
+  a[2] = x >> 16;
+  a[3] = x >> 24;
+  return y;
 }
 
-// 向磁盘写一个block
-void block_write(unsigned int block_num, void* buf)
+
+int
+main(int argc, char *argv[])
 {
-    if(lseek(fsfd, BLOCK_SIZE * block_num, 0) != BLOCK_SIZE * block_num) {
-        perror("lsek");
-        exit(1);
-    }
-    if(write(fsfd, buf, BLOCK_SIZE) != BLOCK_SIZE) {
-        perror("write");
-        exit(1);
-    }
-}
+  int i, cc, fd;
+  uint rootino, inum, off;
+  struct dirent de;
+  char buf[BSIZE];
+  struct dinode din;
 
-// 从磁盘读一个block
-void block_read(unsigned int block_num, void* buf)
-{
-    if(lseek(fsfd, BLOCK_SIZE * block_num, 0) != BLOCK_SIZE * block_num) {
-        perror("lsek");
-        exit(1);
-    }
-    if(read(fsfd, buf, BLOCK_SIZE) != BLOCK_SIZE) {
-        perror("read");
-        exit(1);
-    }
-}
 
-// 申请一个block(修改bitmap)
-unsigned int block_alloc()
-{
-    char buf[BLOCK_SIZE];
-    unsigned int byte, shift;
-    unsigned char bit_cmp;
+  static_assert(sizeof(int) == 4, "Integers must be 4 bytes!");
 
-    block_read(sb.data_bitmap_start, buf);
-    for(byte = 0; byte < BLOCK_SIZE; byte++) {
-        bit_cmp = 1;
-        for(shift = 0; shift <= 7; shift++) {
-            if((bit_cmp & buf[byte]) == 0) {
-                buf[byte] |= bit_cmp;
-                goto find;
-            }
-            bit_cmp = bit_cmp << 1;
-        }
-    }
-    printf("block_alloc: no bit left\n");
-    while(1);
-find:
-    block_write(sb.data_bitmap_start, buf);
-    return byte * 8 + shift + sb.data_start;
-}
+  if(argc < 2){
+    fprintf(stderr, "Usage: mkfs fs.img files...\n");
+    exit(1);
+  }
 
-// 申请一个inode (修改bitmap)
-unsigned short inode_alloc()
-{
-    char buf[BLOCK_SIZE];
-    unsigned int byte, shift;
-    unsigned char bit_cmp;
+  assert((BSIZE % sizeof(struct dinode)) == 0);
+  assert((BSIZE % sizeof(struct dirent)) == 0);
 
-    block_read(sb.inode_bitmap_start, buf);
-    for(byte = 0; byte < BLOCK_SIZE; byte++) {
-        bit_cmp = 1;
-        for(shift = 0; shift <= 7; shift++) {
-            if((bit_cmp & buf[byte]) == 0) {
-                buf[byte] |= bit_cmp;
-                goto find;
-            }
-            bit_cmp = bit_cmp << 1;
-        }
-    }
-    printf("inode_alloc: no bit left\n");
-    while(1);
-find:
-    block_write(sb.inode_bitmap_start, buf);
-    return (unsigned short)(byte * 8 + shift);
-}
+  fsfd = open(argv[1], O_RDWR|O_CREAT|O_TRUNC, 0666);
+  if(fsfd < 0){
+    perror(argv[1]);
+    exit(1);
+  }
 
-// 从磁盘读一个inode
-void inode_read(unsigned int inode_num, inode_disk_t* ip)
-{
-    char buf[BLOCK_SIZE];
-    inode_disk_t* dip;
+  // 1 fs block = 1 disk sector
+  nmeta = 2 + nlog + ninodeblocks + nbitmap;
+  nblocks = FSSIZE - nmeta;
 
-    unsigned int block_num = INODE_LOCATE_BLOCK(inode_num, sb);
-    block_read(block_num, buf);
-    dip = ((inode_disk_t*)buf) + (inode_num % INODE_PER_BLOCK);
-    *ip = *dip;
-}
+  sb.magic = FSMAGIC;
+  sb.size = xint(FSSIZE);
+  sb.nblocks = xint(nblocks);
+  sb.ninodes = xint(NINODES);
+  sb.nlog = xint(nlog);
+  sb.logstart = xint(2);
+  sb.inodestart = xint(2+nlog);
+  sb.bmapstart = xint(2+nlog+ninodeblocks);
 
-// 向磁盘写一个inode
-void inode_write(unsigned short inode_num, inode_disk_t* ip)
-{
-    char buf[BLOCK_SIZE];
-    inode_disk_t* dip;
+  printf("nmeta %d (boot, super, log blocks %u inode blocks %u, bitmap blocks %u) blocks %d total %d\n",
+         nmeta, nlog, ninodeblocks, nbitmap, nblocks, FSSIZE);
 
-    unsigned int block_num = INODE_LOCATE_BLOCK(inode_num, sb);
-    block_read(block_num, buf);
-    dip = ((inode_disk_t*)buf) + (inode_num % INODE_PER_BLOCK);
-    *dip = *ip;
-    block_write(block_num, buf);
-}
+  freeblock = nmeta;     // the first free block that we can allocate
 
-// 赋值并写一个inode
-void inode_create(inode_disk_t* inode, unsigned short inode_num, unsigned short type)
-{
-    inode->type = xshort(type);
-    inode->major = xshort(0);
-    inode->minor = xshort(0);
-    inode->nlink = xshort(1);
-    inode->size = xint(0);
-    for(int i = 0; i < N_ADDRS; i++)
-        inode->addrs[i] = xint(0);
-    inode_write(inode_num, inode);
-}
+  for(i = 0; i < FSSIZE; i++)
+    wsect(i, zeroes);
 
-// dirent_create 专用
-char dir_buf[BLOCK_SIZE];
+  memset(buf, 0, sizeof(buf));
+  memmove(buf, &sb, sizeof(sb));
+  wsect(1, buf);
 
-// 添加一个目录项
-unsigned int dirent_create(unsigned int dir_block, unsigned int offset, char* name, unsigned short inode_num)
-{
-    dirent_t de;
-    de.inode_num = xint(inode_num);
-    assert(strlen(name) < 30);
-    strcpy(de.name, name);
+  rootino = ialloc(T_DIR);
+  assert(rootino == ROOTINO);
 
-    block_read(dir_block, dir_buf);
-    memmove(dir_buf + offset, &de, sizeof(de));
-    block_write(dir_block, dir_buf);
+  bzero(&de, sizeof(de));
+  de.inum = xshort(rootino);
+  strcpy(de.name, ".");
+  iappend(rootino, &de, sizeof(de));
 
-    return offset + sizeof(dirent_t);
-}
+  bzero(&de, sizeof(de));
+  de.inum = xshort(rootino);
+  strcpy(de.name, "..");
+  iappend(rootino, &de, sizeof(de));
 
-// 辅助 inode_locate_block
-// 递归查询或创建block
-static unsigned int locate_block(unsigned int* entry, unsigned int bn, unsigned int size)
-{
-    if(*entry == 0)
-        *entry = block_alloc();
-
-    if(size == 1)
-        return *entry;    
-
-    unsigned int* next_entry;
-    unsigned int next_size = size / ENTRY_PER_BLOCK;
-    unsigned int next_bn = bn % next_size;
-    unsigned int ret = 0;
-
-    char buf[BLOCK_SIZE];
-    block_read(*entry, buf);
-    next_entry = (unsigned int*)(buf) + bn / next_size;
-    ret = locate_block(next_entry, next_bn, next_size);
-
-    return ret;
-}
-
-// 确定inode里第bn块data block的block_num
-// 如果不存在第bn块data block则申请一个并返回它的block_num
-// 由于inode->addrs的结构, 这个过程比较复杂, 需要单独处理
-static unsigned int inode_locate_block(inode_disk_t* ip, unsigned int bn)
-{
-    // 在第一个区域
-    if(bn < N_ADDRS_1)
-        return locate_block(&ip->addrs[bn], bn, 1);
-
-    // 在第二个区域
-    bn -= N_ADDRS_1;
-    if(bn < N_ADDRS_2 * ENTRY_PER_BLOCK)
-    {
-        unsigned int size = ENTRY_PER_BLOCK;
-        unsigned int idx = bn / size;
-        unsigned int b = bn % size;
-        return locate_block(&ip->addrs[N_ADDRS_1 + idx], b, size);
-    }
-
-    // 在第三个区域
-    bn -= N_ADDRS_2 * ENTRY_PER_BLOCK;
-    if(bn < N_ADDRS_3 * ENTRY_PER_BLOCK * ENTRY_PER_BLOCK)
-    {
-        unsigned int size = ENTRY_PER_BLOCK * ENTRY_PER_BLOCK;
-        unsigned int idx = bn / size;
-        unsigned int b = bn % size;
-        return locate_block(&ip->addrs[N_ADDRS_1 + N_ADDRS_2 + idx], b, size);
-    }
-
-    printf("inode_locate_block: overflow\n");
-    while(1);
-
-    return 0;
-}
-
-// main函数
-int main(int argc, char* argv[])
-{
-    assert(BLOCK_SIZE % sizeof(inode_disk_t) == 0);
+  for(i = 2; i < argc; i++){
+    // get rid of "user/"
+    char *shortname;
+    if(strncmp(argv[i], "user/", 5) == 0)
+      shortname = argv[i] + 5;
+    else
+      shortname = argv[i];
     
-    // 创建磁盘文件
-    fsfd = open(argv[1], O_RDWR | O_CREAT | O_TRUNC, 0666);
-    if(fsfd < 0) {
-        perror(argv[1]);
-        exit(1);
+    assert(index(shortname, '/') == 0);
+
+    if((fd = open(argv[i], 0)) < 0){
+      perror(argv[i]);
+      exit(1);
     }
 
-    // super block 填充
-    sb.magic = FS_MAGIC;
-    sb.block_size = xint(BLOCK_SIZE);
-    sb.inode_blocks = xint(N_INODE_BLOCK);
-    sb.data_blocks = xint(N_DATA_BLOCK);
-    sb.total_blocks = xint(N_BLOCK);
-    sb.inode_bitmap_start = xint(1);
-    sb.inode_start = xint(1 + 1);
-    sb.data_bitmap_start = xint(1 + 1 + N_INODE_BLOCK);
-    sb.data_start = xint(1 + 1 + N_INODE_BLOCK + 1);
+    // Skip leading _ in name when writing to file system.
+    // The binaries are named _rm, _cat, etc. to keep the
+    // build operating system from trying to execute them
+    // in place of system binaries like rm and cat.
+    if(shortname[0] == '_')
+      shortname += 1;
 
-    // 缓冲区准备
-    char buf[BLOCK_SIZE];
-    memset(buf, 0, sizeof(buf));
+    inum = ialloc(T_FILE);
 
-    // 一个全0的磁盘映像
-    for(int i = 0; i < N_BLOCK; i++)
-        block_write(i, buf);
+    bzero(&de, sizeof(de));
+    de.inum = xshort(inum);
+    strncpy(de.name, shortname, DIRSIZ);
+    iappend(rootino, &de, sizeof(de));
 
-    // 填写 super block
-    memmove(buf, &sb, sizeof(sb));
-    block_write(0, buf);
+    while((cc = read(fd, buf, sizeof(buf))) > 0)
+      iappend(inum, buf, cc);
 
-    // 创建根目录
-    inode_disk_t rooti;
-    unsigned short root_inum = inode_alloc();
-    unsigned int rooti_block = block_alloc();
-    if(root_inum != 0) {
-        printf("rooti = %d\n", root_inum);
-        while(1);
+    close(fd);
+  }
+
+  // fix size of root inode dir
+  rinode(rootino, &din);
+  off = xint(din.size);
+  off = ((off/BSIZE) + 1) * BSIZE;
+  din.size = xint(off);
+  winode(rootino, &din);
+
+  balloc(freeblock);
+
+  exit(0);
+}
+
+void
+wsect(uint sec, void *buf)
+{
+  if(lseek(fsfd, sec * BSIZE, 0) != sec * BSIZE){
+    perror("lseek");
+    exit(1);
+  }
+  if(write(fsfd, buf, BSIZE) != BSIZE){
+    perror("write");
+    exit(1);
+  }
+}
+
+void
+winode(uint inum, struct dinode *ip)
+{
+  char buf[BSIZE];
+  uint bn;
+  struct dinode *dip;
+
+  bn = IBLOCK(inum, sb);
+  rsect(bn, buf);
+  dip = ((struct dinode*)buf) + (inum % IPB);
+  *dip = *ip;
+  wsect(bn, buf);
+}
+
+void
+rinode(uint inum, struct dinode *ip)
+{
+  char buf[BSIZE];
+  uint bn;
+  struct dinode *dip;
+
+  bn = IBLOCK(inum, sb);
+  rsect(bn, buf);
+  dip = ((struct dinode*)buf) + (inum % IPB);
+  *ip = *dip;
+}
+
+void
+rsect(uint sec, void *buf)
+{
+  if(lseek(fsfd, sec * BSIZE, 0) != sec * BSIZE){
+    perror("lseek");
+    exit(1);
+  }
+  if(read(fsfd, buf, BSIZE) != BSIZE){
+    perror("read");
+    exit(1);
+  }
+}
+
+uint
+ialloc(ushort type)
+{
+  uint inum = freeinode++;
+  struct dinode din;
+
+  bzero(&din, sizeof(din));
+  din.type = xshort(type);
+  din.nlink = xshort(1);
+  din.size = xint(0);
+  winode(inum, &din);
+  return inum;
+}
+
+void
+balloc(int used)
+{
+  uchar buf[BSIZE];
+  int i;
+
+  printf("balloc: first %d blocks have been allocated\n", used);
+  assert(used < BSIZE*8);
+  bzero(buf, BSIZE);
+  for(i = 0; i < used; i++){
+    buf[i/8] = buf[i/8] | (0x1 << (i%8));
+  }
+  printf("balloc: write bitmap block at sector %d\n", sb.bmapstart);
+  wsect(sb.bmapstart, buf);
+}
+
+#define min(a, b) ((a) < (b) ? (a) : (b))
+
+void
+iappend(uint inum, void *xp, int n)
+{
+  char *p = (char*)xp;
+  uint fbn, off, n1;
+  struct dinode din;
+  char buf[BSIZE];
+  uint indirect[NINDIRECT];
+  uint x;
+
+  rinode(inum, &din);
+  off = xint(din.size);
+  // printf("append inum %d at off %d sz %d\n", inum, off, n);
+  while(n > 0){
+    fbn = off / BSIZE;
+    assert(fbn < MAXFILE);
+    if(fbn < NDIRECT){
+      if(xint(din.addrs[fbn]) == 0){
+        din.addrs[fbn] = xint(freeblock++);
+      }
+      x = xint(din.addrs[fbn]);
+    } else {
+      if(xint(din.addrs[NDIRECT]) == 0){
+        din.addrs[NDIRECT] = xint(freeblock++);
+      }
+      rsect(xint(din.addrs[NDIRECT]), (char*)indirect);
+      if(indirect[fbn - NDIRECT] == 0){
+        indirect[fbn - NDIRECT] = xint(freeblock++);
+        wsect(xint(din.addrs[NDIRECT]), (char*)indirect);
+      }
+      x = xint(indirect[fbn-NDIRECT]);
     }
-    inode_create(&rooti, root_inum, FT_DIR);
-
-    // 添加 . 和 ..
-    unsigned int offset = 0;
-    offset = dirent_create(rooti_block, offset, ".\0", root_inum);
-    offset = dirent_create(rooti_block, offset, "..\0", root_inum);
-
-    // 写入user目录里的可执行文件
-    // ./user/_xxx
-    char* shortname;
-    int fd, read_len;
-    inode_disk_t inode;
-    unsigned short inum;
-    unsigned int bn = 0, block_num = 0;
-
-    for(int i = 2; i < argc; i++)
-    {
-        // 确定shortname
-        shortname = argv[i] + 7;
-        assert(*shortname == '_');
-        assert(index(shortname, '/') == 0);
-        shortname++;
-
-        // 申请新的inode + 创建目录项
-        inum = inode_alloc();
-        inode_create(&inode, inum, FT_FILE);
-        offset = dirent_create(rooti_block, offset, shortname, inum);
-        
-        // 打开文件
-        fd = open(argv[i], 0);
-        if(fd < 0) {
-            perror(argv[i]);
-            exit(1);
-        }
-        
-        // 获取文件内容并写入磁盘
-        while(1) {
-            read_len = read(fd, buf, BLOCK_SIZE);
-            block_num = inode_locate_block(&inode, bn++);
-            block_write(block_num, buf);
-            inode.size += read_len;
-            if(read_len < BLOCK_SIZE) break;
-        }
-        
-        // 关闭文件
-        close(fd);
-
-        // 写回inode
-        for(int j = 0; j < N_ADDRS; j++)
-            inode.addrs[j] = xint(inode.addrs[j]);
-        inode.size = xint(inode.size);
-        inode_write(inum, &inode);
-    }
-
-    // 更新rooti
-    rooti.addrs[0] = xint(rooti_block);
-    rooti.size = xint(sizeof(dirent_t) * argc);
-    inode_write(root_inum, &rooti);
-
-    return 0;
+    n1 = min(n, (fbn + 1) * BSIZE - off);
+    rsect(x, buf);
+    bcopy(p, buf + off - (fbn * BSIZE), n1);
+    wsect(x, buf);
+    n -= n1;
+    off += n1;
+    p += n1;
+  }
+  din.size = xint(off);
+  winode(inum, &din);
 }

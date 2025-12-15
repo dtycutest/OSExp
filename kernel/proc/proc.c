@@ -315,18 +315,18 @@ fork(void)
 void
 forkret(void)
 {
-  // static int first = 1;
+  static int first = 1;
 
   // Still holding p->lock from scheduler.
   release(&myproc()->lock);
 
-  // if (first) {
-  //   // File system initialization must be run in the context of a
-  //   // regular process (e.g., because it calls sleep), and thus cannot
-  //   // be run from main().
-  //   first = 0;
-  //   fsinit(ROOTDEV);
-  // }
+  if (first) {
+    // File system initialization must be run in the context of a
+    // regular process (e.g., because it calls sleep), and thus cannot
+    // be run from main().
+    first = 0;
+    fsinit(ROOTDEV);
+  }
 
   usertrapret();
 }
@@ -595,3 +595,5 @@ procdump(void)
     printf("\n");
   }
 }
+
+

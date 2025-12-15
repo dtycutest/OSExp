@@ -1,4 +1,7 @@
+#ifndef __SYSNUM_H__
+#define __SYSNUM_H__
 
+// System call numbers
 #define SYS_fork    1
 #define SYS_exit    2
 #define SYS_wait    3
@@ -20,4 +23,16 @@
 #define SYS_link   19
 #define SYS_mkdir  20
 #define SYS_close  21
+
 #define SYS_print  22
+
+#define SYS_alloc_block 23
+#define SYS_free_block 24
+
+#define SYS_show_buf 25
+#define SYS_read_block 26
+#define SYS_write_block 27
+#define SYS_release_block 28
+
+
+#endif

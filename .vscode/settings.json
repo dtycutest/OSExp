@@ -19,6 +19,10 @@
         "sysfunc.h": "c",
         "pmem.h": "c",
         "syscall.h": "c",
-        "sleeplock.h": "c"
+        "sleeplock.h": "c",
+        "sys.h": "c",
+        "type.h": "c",
+        "stat.h": "c",
+        "fs.h": "c"
     }
 }

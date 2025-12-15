@@ -1,4 +1,5 @@
 #include "proc/proc.h"
+#include "dev/timer.h"
 // #include "mem/vmem.h"
 // #include "mem/pmem.h"
 // #include "mem/mmap.h"
@@ -60,15 +61,56 @@ sys_exit(void)
   return 0;  // not reached
 }
 
-// extern timer_t sys_timer;
+extern timer_t sys_timer;
 
-// // 进程睡眠一段时间
-// // uint32 second 睡眠时间
-// // 成功返回0, 失败返回-1
-// uint64 sys_sleep()
-// {
+// 进程睡眠一段时间
+// uint32 second 睡眠时间
+// 成功返回0, 失败返回-1
+uint64 sys_sleep()
+{
+   int n;
+  uint ticks0;
 
-// }
+  argint(0, &n);
+  acquire(&sys_timer.lk);
+  ticks0 = sys_timer.ticks;
+  while(sys_timer.ticks - ticks0 < n){
+    if(killed(myproc())){
+      release(&sys_timer.lk);
+      return -1;
+    }
+    sleep(&sys_timer.ticks, &sys_timer.lk);
+  }
+  release(&sys_timer.lk);
+  return 0;
+}
+
+uint64
+sys_getpid(void)
+{
+  return myproc()->pid;
+}
+
+uint64
+sys_kill(void)
+{
+  int pid;
+
+  argint(0, &pid);
+  return kill(pid);
+}
+
+uint64
+sys_uptime(void)
+{
+  uint xticks;
+
+  acquire(&sys_timer.lk);
+  xticks = sys_timer.ticks;
+  release(&sys_timer.lk);
+  return xticks;
+}
+
 
 // // 内存映射
 // // uint64 start 起始地址 (如果为0则由内核自主选择一个合适的起点, 通常是顺序扫描找到一个够大的空闲空间)

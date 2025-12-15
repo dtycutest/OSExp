@@ -10,6 +10,7 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+typedef struct inode inode_t;
 
 
 // console.c
@@ -40,7 +41,7 @@ void            exit(int);
 int             fork(void);
 int             growproc(int);
 void            proc_mapstacks(pagetable_t);
-// pagetable_t     proc_pagetable(struct proc *);
+pagetable_t     proc_pgtbl_init(struct proc *);
 void            proc_freepagetable(pagetable_t, uint64);
 int             kill(int);
 int             killed(struct proc*);
@@ -114,7 +115,7 @@ void            usertrapret(void);
 
 // 辅助函数: 外设中断和时钟中断处理
 
-void external_interrupt_handler();
+int external_interrupt_handler();
 void timer_interrupt_handler();
 
 
@@ -159,6 +160,7 @@ void            brelse(struct buf*);
 void            bwrite(struct buf*);
 void            bpin(struct buf*);
 void            bunpin(struct buf*);
+void            show_buf(void);
 
 // file.c
 struct file*    filealloc(void);
@@ -176,6 +178,7 @@ struct inode*   dirlookup(struct inode*, char*, uint*);
 struct inode*   ialloc(uint, short);
 struct inode*   idup(struct inode*);
 void            iinit();
+struct inode*   iget(uint dev, uint inum);
 void            ilock(struct inode*);
 void            iput(struct inode*);
 void            iunlock(struct inode*);
@@ -188,6 +191,8 @@ int             readi(struct inode*, int, uint64, uint, uint);
 void            stati(struct inode*, struct stat*);
 int             writei(struct inode*, int, uint64, uint, uint);
 void            itrunc(struct inode*);
+uint            balloc(uint dev);
+void            bfree(int dev, uint b);
 
 // log.c
 void            initlog(int, struct superblock*);
@@ -211,3 +216,6 @@ int             pipealloc(struct file**, struct file**);
 void            pipeclose(struct pipe*, int);
 int             piperead(struct pipe*, uint64, int);
 int             pipewrite(struct pipe*, uint64, int);
+
+// exec.c
+int             exec(char*, char**);

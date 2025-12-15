@@ -14,15 +14,20 @@ $(KERN):
 
 $(USER):
 	$(MAKE) init --directory=$@
+	$(MAKE) build --directory=$@
+
+FILES = \
+	user/_test
 
 $(MKFS):
 	$(MAKE) build --directory=$@
-	$(MKFS)/mkfs $(FS_IMG)
+	$(MKFS)/mkfs $(FS_IMG) $(FILES)
 
 # QEMU相关配置
 QEMU     =  qemu-system-riscv64
 QEMUOPTS =  -machine virt -bios none -kernel $(KERNEL_ELF) 
 QEMUOPTS += -m 128M -smp $(CPUNUM) -nographic
+QEMUOPTS += -global virtio-mmio.force-legacy=false
 QEMUOPTS += -drive file=$(FS_IMG),if=none,format=raw,id=x0
 QEMUOPTS += -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
 
@@ -45,6 +50,7 @@ qemu-gdb: $(USER) $(KERN) $(MKFS) .gdbinit
 	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
 
 clean:
+	$(MAKE) --directory=$(USER) clean
 	$(MAKE) --directory=$(KERN) clean
 	$(MAKE) --directory=$(MKFS) clean
 	rm -f $(KERNEL_ELF) $(FS_IMG) .gdbinit

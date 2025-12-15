@@ -39,6 +39,267 @@ readsb(int dev, struct superblock *sb)
   brelse(bp);
 }
 
+void iprint(inode_t* ip)
+{
+  printf("dev=%d inum=%d ref=%d valid=%d type=%d size=%d\n",ip->dev,ip->inum,ip->ref,ip->valid,ip->type,ip->size);
+}
+bool blockcmp(char* a,char* b)
+{
+  for(int i=0;i<2*BSIZE;i++){
+    if(*(a+i)!=*(b+i)){
+      return false;
+    }
+  }
+  return true;
+}
+char str[BSIZE*2],tmp[BSIZE*2];
+void inode_test()
+{
+  begin_op();
+
+  // 在函数外声明两个个大小为 2*BSIZE 的数组 str 和 tmp
+  // blockcmp 函数负责比较两个大小为 2*BSIZE 的空间是否完全一样
+
+  // inode初始化
+  // iinit();
+  uint32 ret = 0;
+
+  for(int i = 0; i < BSIZE * 2; i++)
+      str[i] = i;
+
+  // 创建新的inode
+  inode_t* nip = ialloc(1,T_FILE);
+  ilock(nip);
+  
+  // 第一次查看
+  iprint(nip);
+
+  // 第一次写入
+  ret = writei(nip, false, (uint64)str, 0, BSIZE / 2);
+  assert(ret == BSIZE / 2, "inode_write_data: fail");
+
+  // 第二次写入
+  ret = writei(nip, false, (uint64)(str) + BSIZE / 2, BSIZE / 2, BSIZE + BSIZE / 2);
+  assert(ret == BSIZE +  BSIZE / 2, "inode_write_data: fail");
+
+  // 一次读取
+  ret = readi(nip, false, (uint64)tmp, 0, BSIZE * 2);
+  assert(ret == BSIZE * 2, "inode_read_data: fail");
+
+  // 第二次查看
+  iprint(nip);
+  
+  iunlockput(nip);
+
+  // 测试
+  if(blockcmp(tmp, str) == true)
+      printf("success");
+  else
+      printf("fail");
+
+  
+  end_op();
+  while (1);
+}
+
+
+void path_test()
+{
+  begin_op();
+  // inode初始化
+  // iinit();
+
+  // 创建inode
+  inode_t* ip = iget(ROOTDEV,ROOTINO);
+  inode_t* ip_1 = ialloc(1,T_DIR);
+  inode_t* ip_2 = ialloc(1,T_DIR);
+  inode_t* ip_3 = ialloc(1,T_FILE);
+
+  // 上锁
+  ilock(ip);
+  ilock(ip_1);
+  ilock(ip_2);
+  ilock(ip_3);
+
+  // 创建目录
+  dirlink(ip, "user", ip_1->inum);
+  dirlink(ip_1, "work", ip_2->inum);
+  dirlink(ip_2, "hello.txt", ip_3->inum);
+  
+  // 填写文件
+  writei(ip_3, false, (uint64)"hello world", 0, 11);
+
+  // 解锁
+  iunlock(ip_3);
+  iunlock(ip_2);
+  iunlock(ip_1);
+  iunlock(ip);
+
+  // 路径查找
+  char* path = "/user/work/hello.txt";
+  char name[DIRSIZ];
+  inode_t* tmp_1 = nameiparent(path, name);
+  inode_t* tmp_2 = namei(path);
+
+  assert(tmp_1 != NULL, "tmp1 = NULL");
+  assert(tmp_2 != NULL, "tmp2 = NULL");
+  printf("\nname = %s\n", name);
+
+  // 输出 tmp_1 的信息
+  ilock(tmp_1);
+  iprint(tmp_1);
+  iunlockput(tmp_1);
+
+  // 输出 tmp_2 的信息
+  ilock(tmp_2);
+  iprint(tmp_2);
+  char str[12];
+  str[11] = 0;
+  readi(tmp_2, false, (uint64)str, 0, tmp_2->size);
+  printf("read: %s\n", str);
+  iunlockput(tmp_2);
+
+  printf("over");
+  end_op();
+  while (1);
+}
+
+
+void
+dirprint(struct inode *ip)
+{
+  struct dirent de;
+  int off;
+
+  // 必须锁住：保证读取目录内容时一致
+  // ilock(ip);
+  if(ip->type != T_DIR){
+    printf("dirprint: not a directory\n");
+    iunlock(ip);
+    return;
+  }
+  printf("Directory listing for inode %d:\n", ip->inum);
+  // 遍历整个目录文件
+  for(off = 0; off < ip->size; off += sizeof(de)){
+    if(readi(ip, false, (uint64)&de, off, sizeof(de)) != sizeof(de))
+      panic("dirprint: readi");
+
+    // inum = 0 表示这个 entry 空洞
+    if(de.inum == 0)
+      continue;
+
+    printf("%d %s\n", de.inum, de.name);
+  }
+  // iunlock(ip);
+}
+void
+dirrm(struct inode *dp, char *name)
+{
+  struct dirent de;
+  int off;
+  // ilock(dp);
+  if(dp->type != T_DIR){
+    // iunlock(dp);
+    panic("dirrm: not dir");
+  }
+  // 遍历整个目录文件
+  for(off = 0; off < dp->size; off += sizeof(de)){
+    if(readi(dp, false, (uint64)&de, off, sizeof(de)) != sizeof(de))
+      panic("dirrm: readi");
+    if(de.inum == 0)
+      continue;
+    // 名字匹配
+    if(strncmp(name, de.name, DIRSIZ) == 0){
+      // 清空这个目录项：把 inum 置 0
+      memset(&de, 0, sizeof(de));
+      if(writei(dp, false, (uint64)&de, off, sizeof(de)) != sizeof(de))
+        panic("dirrm: writei");
+      // iunlock(dp);
+      return;
+      // 删除成功
+    }
+  }
+  // iunlock(dp);
+  panic("not found");
+}
+int
+dirlink_offset(struct inode *dp, char *name, uint inum)
+{
+  struct dirent de;
+  int off;
+
+  // name 不能重复
+  if(dirlookup(dp, name, 0) != 0)
+    return -1;
+
+  // 查找空的目录项槽位
+  for(off = 0; off < dp->size; off += sizeof(de)){
+    if(readi(dp, false, (uint64)&de, off, sizeof(de)) != sizeof(de))
+      panic("dirlink: readi");
+    if(de.inum == 0)
+      goto write_entry;
+  }
+
+  // 没有空槽位，则在目录末尾扩展一个新目录项
+  // off == dp->size
+
+write_entry:
+  memset(&de, 0, sizeof(de));
+  strncpy(de.name, name, DIRSIZ);
+  de.inum = inum;
+
+  if(writei(dp, false, (uint64)&de, off, sizeof(de)) != sizeof(de))
+    panic("dirlink: writei");
+
+  return off;   // 返回新目录项的 offset
+}
+void dir_test()
+{
+  begin_op();
+  // inode初始化
+  // iinit();
+
+  // 获取根目录
+  inode_t* ip = iget(ROOTDEV,ROOTINO);    
+  ilock(ip);
+
+  // 第一次查看
+  dirprint(ip);
+  
+  // add entry
+  dirlink(ip, "a.txt", 1);
+  dirlink(ip, "b.txt", 2);
+  dirlink(ip, "c.txt", 3);
+  
+  // 第二次查看
+  dirprint(ip);
+
+  uint poff;
+  // 第一次检查
+  assert(dirlookup(ip, "b.txt",&poff)->inum == 2, "error-1");
+
+  // delete entry
+  dirrm(ip, "a.txt");
+  
+  // 第三次查看
+  dirprint(ip);
+  
+  // add entry
+  dirlink(ip, "d.txt", 1);    
+  
+  // 第四次查看
+  dirprint(ip);
+  
+  // 第二次检查
+  assert(dirlink_offset(ip, "d.txt", 4) == BSIZE, "error-2");
+  
+  iunlock(ip);
+
+  printf("over");
+  end_op();
+  while (1);
+}
+
 /// @brief 初始化文件系统
 void fsinit(int dev)
 {
@@ -49,6 +310,10 @@ void fsinit(int dev)
     panic("invalid file system");
   // 初始化日志系统
   initlog(dev, &sb);
+
+  // inode_test();
+  // path_test();
+  // dir_test();
 }
 
 /** Block层操作
@@ -79,7 +344,7 @@ bzero(int dev, int bno)
 /// @brief 分配一个新的磁盘块，并将其内容初始化为零。
 /// @param dev 指定的设备号
 /// @return 返回分配的块号，如果没有可用的块则返回0
-static uint
+uint
 balloc(uint dev)
 {
   int b, bi, m;
@@ -113,7 +378,7 @@ balloc(uint dev)
 /// @brief 释放一个不再使用的磁盘块，将其标记为可用。
 /// @param dev 设备号
 /// @param b 要释放的块号
-static void
+void
 bfree(int dev, uint b)
 {
   struct buf *bp;
@@ -215,7 +480,7 @@ void iinit()
   }
 }
 
-static struct inode *iget(uint dev, uint inum);
+// static struct inode *iget(uint dev, uint inum);
 /// @brief 在设备dev上分配一个inode。通过给它指定类型type将其标记为已分配。
 /// 返回一个未锁定但已分配且被引用的inode，如果没有空闲inode则返回NULL。
 struct inode *
@@ -278,7 +543,7 @@ void iupdate(struct inode *ip)
 /// @param dev 设备号
 /// @param inum inode编号
 /// @return 返回指向内存中对应inode的指针，如果没有找到则返回NULL
-static struct inode *
+struct inode *
 iget(uint dev, uint inum)
 {
   struct inode *ip, *empty;
